@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Build files
+dist/
+build/
+
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+
+# Logs
+*.log
+
+# IDE
+.vscode/

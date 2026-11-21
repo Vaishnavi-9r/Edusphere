@@ -1,0 +1,105 @@
+name: Backend CI
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test-discovery:
+    name: Validate Playwright test discovery
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: List discovered E2E tests
+        run: npm run test:e2e -- --list
+
+  e2e:
+    name: Playwright E2E (isolated test database)
+    needs: test-discovery
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # This must be a dedicated, non-production database. There is no fallback.
+      E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.E2E_JWT_SECRET }}
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_SYSTEM_ADMIN_EMAIL: ${{ secrets.E2E_SYSTEM_ADMIN_EMAIL }}
+      E2E_SYSTEM_ADMIN_PASSWORD: ${{ secrets.E2E_SYSTEM_ADMIN_PASSWORD }}
+      E2E_TEACHER_EMAIL: ${{ secrets.E2E_TEACHER_EMAIL }}
+      E2E_TEACHER_PASSWORD: ${{ secrets.E2E_TEACHER_PASSWORD }}
+      E2E_PARENT_EMAIL: ${{ secrets.E2E_PARENT_EMAIL }}
+      E2E_PARENT_PASSWORD: ${{ secrets.E2E_PARENT_PASSWORD }}
+      E2E_STUDENT_EMAIL: ${{ secrets.E2E_STUDENT_EMAIL }}
+      E2E_STUDENT_PASSWORD: ${{ secrets.E2E_STUDENT_PASSWORD }}
+      E2E_SCHOOL_B_EMAIL: ${{ secrets.E2E_SCHOOL_B_EMAIL }}
+      E2E_SCHOOL_B_PASSWORD: ${{ secrets.E2E_SCHOOL_B_PASSWORD }}
+      PORT: 5000
+      CI: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Require isolated E2E credentials
+        shell: bash
+        run: |
+          if [[ -z "$E2E_DATABASE_URL" ]]; then
+            echo "E2E_DATABASE_URL is required. Configure it to point to a dedicated non-production test database; CI will not fall back to another DATABASE_URL." >&2
+            exit 1
+          fi
+          if [[ -z "$JWT_SECRET" ]]; then
+            echo "E2E_JWT_SECRET is required." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Install Playwright Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: backend/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14

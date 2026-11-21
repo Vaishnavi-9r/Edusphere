@@ -1,0 +1,488 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum ExamType {
+  UNIT_TEST
+  MID_TERM
+  FINAL_EXAM
+  PRACTICAL
+  ASSIGNMENT
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+}
+
+enum FeeCategory {
+  TUITION
+  EXAMINATION
+  TRANSPORT
+  LIBRARY
+  OTHER
+}
+
+enum StudentFeeStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum ParentRelationshipType {
+  FATHER
+  MOTHER
+  GUARDIAN
+  OTHER
+}
+
+model Tenant {
+  id         String   @id @default(uuid())
+  schoolName String
+  createdAt  DateTime @default(now())
+
+  users      User[]
+  students   Student[]
+  attendance Attendance[]
+  teachers   Teacher[]
+  subjects   Subject[]
+  courses    Course[]
+  teacherSubjects TeacherSubject[]
+  courseSubjects  CourseSubject[]
+  timetables      Timetable[]
+  timetableEntries TimetableEntry[]
+  examinations Examination[]
+  enrollments StudentEnrollment[]
+  grades      Grade[]
+  feeStructures FeeStructure[]
+  studentFees StudentFee[]
+  payments    Payment[]
+  parents     Parent[]
+  parentStudents ParentStudent[]
+}
+
+model User {
+  id           String @id @default(uuid())
+  fullName     String
+  email        String @unique
+  passwordHash String
+  role         String
+  isActive     Boolean @default(true)
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  attendanceMarked Attendance[] @relation("AttendanceMarkedBy")
+  teacherProfile   Teacher?
+  gradesEntered    Grade[]
+  paymentsReceived Payment[]
+  parentProfile Parent?
+  studentProfile Student?
+
+  @@unique([tenantId, id])
+
+}
+
+model Student {
+  id         String @id @default(uuid())
+  userId     String? @unique
+  name       String
+  rollNumber String
+  grade      String
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  user     User? @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  createdAt DateTime @default(now())
+
+  attendance Attendance[]
+  enrollments StudentEnrollment[]
+  grades      Grade[]
+  feeAssignments StudentFee[]
+  parentLinks ParentStudent[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, userId])
+  @@unique([tenantId, rollNumber])
+}
+
+model Parent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  userId      String   @unique
+  phoneNumber String?
+  address     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade)
+  studentLinks ParentStudent[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+}
+
+model ParentStudent {
+  tenantId          String
+  parentId          String
+  studentId         String
+  relationshipType  ParentRelationshipType
+  isPrimaryContact  Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  parent  Parent  @relation(fields: [tenantId, parentId], references: [tenantId, id], onDelete: Cascade, onUpdate: Cascade)
+  student Student @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([tenantId, parentId, studentId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, parentId])
+}
+
+model Attendance {
+  id         String           @id @default(uuid())
+  tenantId   String
+  studentId  String
+  date       DateTime         @db.Date
+  status     AttendanceStatus
+  remarks    String?
+  markedById String
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  student  Student @relation(fields: [studentId], references: [id])
+  markedBy User    @relation("AttendanceMarkedBy", fields: [markedById], references: [id])
+
+  @@unique([tenantId, studentId, date])
+  @@index([tenantId, date])
+  @@index([markedById])
+}
+
+model Teacher {
+  id              String   @id @default(uuid())
+  tenantId        String
+  userId          String   @unique
+  employeeId      String
+  phoneNumber     String?
+  qualification   String?
+  specialization  String?
+  joiningDate     DateTime? @db.Date
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  subjectAssignments TeacherSubject[]
+  timetableEntries   TimetableEntry[]
+
+  @@unique([tenantId, employeeId])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+}
+
+model Subject {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  code        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  teacherAssignments TeacherSubject[]
+  courseAssignments  CourseSubject[]
+  timetableEntries   TimetableEntry[]
+  examinations       Examination[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  code        String
+  description String?
+  academicYear String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  subjectAssignments CourseSubject[]
+  timetables          Timetable[]
+  timetableEntries    TimetableEntry[]
+  examinations        Examination[]
+  enrollments         StudentEnrollment[]
+  grades              Grade[]
+  feeStructures       FeeStructure[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id, academicYear])
+  @@index([tenantId])
+}
+
+model TeacherSubject {
+  tenantId   String
+  teacherId  String
+  subjectId  String
+  assignedAt DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+  timetableEntries TimetableEntry[]
+
+  @@id([tenantId, teacherId, subjectId])
+  @@index([tenantId, subjectId])
+}
+
+model Examination {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  examType     ExamType
+  courseId     String
+  subjectId    String
+  academicYear String
+  examDate     DateTime @db.Date
+  startTime    DateTime @db.Time(0)
+  endTime      DateTime @db.Time(0)
+  maximumMarks Decimal  @db.Decimal(8, 2)
+  passingMarks Decimal  @db.Decimal(8, 2)
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  course        Course        @relation(fields: [tenantId, courseId, academicYear], references: [tenantId, id, academicYear])
+  subject       Subject       @relation(fields: [tenantId, subjectId], references: [tenantId, id])
+  courseSubject CourseSubject @relation(fields: [tenantId, courseId, subjectId], references: [tenantId, courseId, subjectId])
+  grades        Grade[]
+
+  @@unique([tenantId, id, courseId, academicYear, maximumMarks])
+  @@index([tenantId, examDate])
+  @@index([tenantId, courseId, examDate])
+  @@index([tenantId, subjectId, examDate])
+  @@index([tenantId, academicYear, examType])
+}
+
+model CourseSubject {
+  tenantId   String
+  courseId   String
+  subjectId  String
+  assignedAt DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  course  Course  @relation(fields: [courseId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+  timetableEntries TimetableEntry[]
+  examinations Examination[]
+
+  @@id([tenantId, courseId, subjectId])
+  @@index([tenantId, subjectId])
+}
+
+model StudentEnrollment {
+  id             String           @id @default(uuid())
+  tenantId       String
+  studentId      String
+  courseId       String
+  academicYear   String
+  enrollmentDate DateTime         @db.Date
+  status         EnrollmentStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  student Student @relation(fields: [tenantId, studentId], references: [tenantId, id])
+  course  Course  @relation(fields: [tenantId, courseId, academicYear], references: [tenantId, id, academicYear])
+  grades  Grade[]
+  studentFees StudentFee[]
+
+  @@unique([tenantId, studentId, courseId, academicYear])
+  @@unique([tenantId, id, studentId, courseId, academicYear])
+  @@unique([tenantId, id, studentId, academicYear])
+  @@index([tenantId, courseId, academicYear, status])
+  @@index([tenantId, studentId, academicYear])
+}
+
+model Grade {
+  id             String   @id @default(uuid())
+  tenantId       String
+  studentId      String
+  examinationId  String
+  enrollmentId   String
+  courseId       String
+  academicYear   String
+  marksObtained  Decimal  @db.Decimal(8, 2)
+  maximumMarks   Decimal  @db.Decimal(8, 2)
+  percentage     Decimal  @db.Decimal(5, 2)
+  grade          String
+  remarks        String?
+  enteredById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  student     Student          @relation(fields: [tenantId, studentId], references: [tenantId, id])
+  examination Examination      @relation(fields: [tenantId, examinationId, courseId, academicYear, maximumMarks], references: [tenantId, id, courseId, academicYear, maximumMarks], onDelete: Restrict, onUpdate: Cascade)
+  enrollment  StudentEnrollment @relation(fields: [tenantId, enrollmentId, studentId, courseId, academicYear], references: [tenantId, id, studentId, courseId, academicYear], onDelete: Restrict, onUpdate: Cascade)
+  course      Course           @relation(fields: [tenantId, courseId, academicYear], references: [tenantId, id, academicYear])
+  enteredBy   User             @relation(fields: [tenantId, enteredById], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([tenantId, studentId, examinationId])
+  @@index([tenantId, examinationId])
+  @@index([tenantId, enrollmentId])
+  @@index([tenantId, courseId, academicYear])
+}
+
+model FeeStructure {
+  id           String      @id @default(uuid())
+  tenantId     String
+  name         String
+  description  String?
+  category     FeeCategory
+  amount       Int
+  academicYear String
+  courseId     String?
+  dueDate      DateTime    @db.Date
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  course       Course?        @relation(fields: [tenantId, courseId, academicYear], references: [tenantId, id, academicYear])
+  assignments  StudentFee[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, id, academicYear])
+  @@index([tenantId, academicYear, category, isActive])
+  @@index([tenantId, courseId])
+}
+
+model StudentFee {
+  id             String          @id @default(uuid())
+  tenantId       String
+  studentId      String
+  feeStructureId String
+  enrollmentId   String?
+  academicYear   String
+  totalAmount    Int
+  amountPaid     Int             @default(0)
+  dueDate        DateTime        @db.Date
+  status         StudentFeeStatus @default(PENDING)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  student      Student          @relation(fields: [tenantId, studentId], references: [tenantId, id])
+  feeStructure FeeStructure     @relation(fields: [tenantId, feeStructureId, academicYear], references: [tenantId, id, academicYear])
+  enrollment   StudentEnrollment? @relation(fields: [tenantId, enrollmentId, studentId, academicYear], references: [tenantId, id, studentId, academicYear], onDelete: Restrict, onUpdate: Cascade)
+  payments     Payment[]
+
+  @@unique([tenantId, studentId, feeStructureId])
+  @@unique([tenantId, id])
+  @@index([tenantId, studentId, status])
+  @@index([tenantId, feeStructureId])
+  @@index([tenantId, enrollmentId])
+}
+
+model Payment {
+  id                   String        @id @default(uuid())
+  tenantId             String
+  studentFeeId         String
+  amount               Int
+  paymentMethod        PaymentMethod
+  transactionReference String?
+  paymentDate          DateTime      @default(now()) @db.Timestamptz(3)
+  receivedById         String
+  createdAt            DateTime      @default(now())
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  studentFee StudentFee @relation(fields: [tenantId, studentFeeId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade)
+  receivedBy User       @relation(fields: [tenantId, receivedById], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([tenantId, transactionReference])
+  @@index([tenantId, studentFeeId, paymentDate])
+  @@index([tenantId, paymentDate])
+}
+
+model Timetable {
+  id          String   @id @default(uuid())
+  tenantId    String
+  courseId    String
+  name        String
+  academicYear String
+  term        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  course  Course  @relation(fields: [tenantId, courseId, academicYear], references: [tenantId, id, academicYear])
+  entries TimetableEntry[]
+
+  @@unique([tenantId, courseId, academicYear, term])
+  @@unique([tenantId, id, courseId, academicYear, term])
+  @@index([tenantId, courseId, academicYear])
+}
+
+model TimetableEntry {
+  id           String   @id @default(uuid())
+  tenantId     String
+  timetableId  String
+  courseId     String
+  academicYear String
+  term         String
+  subjectId    String
+  teacherId    String
+  dayOfWeek    Int
+  startTime    DateTime @db.Time(0)
+  endTime      DateTime @db.Time(0)
+  classroom    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
+  timetable      Timetable     @relation(fields: [tenantId, timetableId, courseId, academicYear, term], references: [tenantId, id, courseId, academicYear, term])
+  course         Course        @relation(fields: [tenantId, courseId, academicYear], references: [tenantId, id, academicYear])
+  subject        Subject       @relation(fields: [tenantId, subjectId], references: [tenantId, id])
+  teacher        Teacher       @relation(fields: [tenantId, teacherId], references: [tenantId, id])
+  courseSubject  CourseSubject @relation(fields: [tenantId, courseId, subjectId], references: [tenantId, courseId, subjectId])
+  teacherSubject TeacherSubject @relation(fields: [tenantId, teacherId, subjectId], references: [tenantId, teacherId, subjectId])
+
+  @@index([tenantId, timetableId, dayOfWeek, startTime])
+  @@index([tenantId, subjectId])
+}
