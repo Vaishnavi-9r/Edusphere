@@ -28,7 +28,7 @@ module.exports = defineConfig({
   use: {
     baseURL: "http://localhost:5000",
   },
-  webServer: {
+  ...(process.env.PLAYWRIGHT_SKIP_WEBSERVER === "1" ? {} : { webServer: {
     command: "npm run start",
     url: "http://localhost:5000/",
     reuseExistingServer: false,
@@ -37,7 +37,7 @@ module.exports = defineConfig({
       DATABASE_URL: e2eDatabaseUrl,
       JWT_SECRET: e2eJwtSecret,
     },
-  },
+  } }),
   projects: [
     {
       name: "chromium",
