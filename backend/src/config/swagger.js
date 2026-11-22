@@ -2,6 +2,13 @@
 const swaggerJsdoc = require("swagger-jsdoc");
 const path = require("path");
 
+const swaggerServerUrl = (
+  process.env.SWAGGER_SERVER_URL ||
+  (["production", "staging"].includes(process.env.NODE_ENV?.toLowerCase())
+    ? "https://edusphere-staging-api.onrender.com"
+    : "http://localhost:5000")
+).replace(/\/+$/, "");
+
 const options = {
   definition: {
     openapi: "3.0.0",
@@ -934,8 +941,8 @@ const options = {
     },
     servers: [
       {
-        url: "http://localhost:5000",
-        description: "Local development server",
+        url: swaggerServerUrl,
+        description: "EduSphere API server",
       },
     ],
   },
