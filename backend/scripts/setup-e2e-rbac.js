@@ -50,7 +50,7 @@ function prepareRoleCredentials() {
     if (!/^\S+@example\.test$/i.test(email)) {
       throw new Error(`${config.emailKey} must use the reserved example.test domain for test-only accounts.`);
     }
-    if (typeof password !== "string" || password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
+    if (typeof password !== "string" || /[\r\n]/.test(password) || password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
       throw new Error(`${config.passwordKey} must be 8 to 72 UTF-8 bytes.`);
     }
     process.env[config.emailKey] = email;
@@ -75,6 +75,16 @@ function persistEnvValues(updates) {
     else lines.push(line);
   }
   fs.writeFileSync(envFile, lines.join(newline), "utf8");
+}
+
+function exportGithubActionsEnv(updates) {
+  const githubEnvFile = process.env.GITHUB_ENV;
+  if (!githubEnvFile) return;
+  for (const value of Object.values(updates)) {
+    if (/[\r\n]/.test(value)) throw new Error("E2E account values cannot contain line breaks.");
+  }
+  const entries = Object.entries(updates).map(([key, value]) => `${key}=${value}`).join("\n");
+  fs.appendFileSync(githubEnvFile, `${entries}\n`, { encoding: "utf8" });
 }
 
 function requireE2EDatabase() {
@@ -194,15 +204,21 @@ async function main() {
     prisma.user.findUnique({ where: { email: adminEmail } }),
     prisma.user.findUnique({ where: { email: schoolBEmail } }),
   ]);
-  if (!schoolA || schoolA.role !== "SCHOOL_ADMIN" || !schoolA.isActive || !(await bcrypt.compare(adminPassword, schoolA.passwordHash))) {
-    throw new Error("School A test admin is missing, inactive, or its supplied password does not match.");
-  }
-  if (!schoolB || schoolB.role !== "SCHOOL_ADMIN" || !schoolB.isActive || !(await bcrypt.compare(schoolBPassword, schoolB.passwordHash))) {
-    throw new Error("School B test admin is missing, inactive, or its supplied password does not match.");
-  }
+  if (!schoolA || schoolA.role !== "SCHOOL_ADMIN") throw new Error("School A test account must exist as a SCHOOL_ADMIN in the E2E database.");
+  if (!schoolA.isActive) throw new Error("School A E2E test account is inactive.");
+  if (!(await bcrypt.compare(adminPassword, schoolA.passwordHash))) throw new Error("E2E_ADMIN_PASSWORD does not match the stored School A test account password.");
+  if (!schoolB || schoolB.role !== "SCHOOL_ADMIN") throw new Error("School B test account must exist as a SCHOOL_ADMIN in the E2E database.");
+  if (!schoolB.isActive) throw new Error("School B E2E test account is inactive.");
+  if (!(await bcrypt.compare(schoolBPassword, schoolB.passwordHash))) throw new Error("E2E_SCHOOL_B_PASSWORD does not match the stored School B test account password.");
   if (schoolA.tenantId === schoolB.tenantId) {
     throw new Error("School A and School B test admins must belong to distinct tenants.");
   }
+  const [schoolAStudents, schoolBStudents] = await Promise.all([
+    prisma.student.count({ where: { tenantId: schoolA.tenantId } }),
+    prisma.student.count({ where: { tenantId: schoolB.tenantId } }),
+  ]);
+  if (schoolAStudents === 0) throw new Error("School A E2E tenant has no existing student for tenant-isolation tests.");
+  if (schoolBStudents === 0) throw new Error("School B E2E tenant has no existing student for tenant-isolation tests.");
 
   const emailValues = [adminEmail, schoolBEmail, ...roleConfig.map((item) => process.env[item.emailKey].toLowerCase())];
   if (new Set(emailValues).size !== emailValues.length) throw new Error("E2E account emails must be unique.");
@@ -212,6 +228,9 @@ async function main() {
     E2E_ADMIN_PASSWORD: adminPassword,
     E2E_SCHOOL_B_EMAIL: schoolBEmail,
     E2E_SCHOOL_B_PASSWORD: schoolBPassword,
+    ...roleCredentials,
+  });
+  exportGithubActionsEnv({
     ...roleCredentials,
   });
 
@@ -242,7 +261,11 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error(`E2E RBAC setup failed: ${error.message}`);
+    if (error?.code === "P1001" || error?.code === "P1002") {
+      console.error("E2E RBAC setup failed: could not connect to the configured E2E database.");
+    } else {
+      console.error(`E2E RBAC setup failed: ${error.message}`);
+    }
     process.exitCode = 1;
   })
   .finally(async () => {

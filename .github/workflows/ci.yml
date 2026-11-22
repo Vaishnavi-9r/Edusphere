@@ -64,6 +64,8 @@ jobs:
       JWT_SECRET: ${{ secrets.E2E_JWT_SECRET }}
       E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
       E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_SCHOOL_B_EMAIL: ${{ secrets.E2E_SCHOOL_B_EMAIL }}
+      E2E_SCHOOL_B_PASSWORD: ${{ secrets.E2E_SCHOOL_B_PASSWORD }}
       E2E_SYSTEM_ADMIN_EMAIL: ${{ secrets.E2E_SYSTEM_ADMIN_EMAIL }}
       E2E_SYSTEM_ADMIN_PASSWORD: ${{ secrets.E2E_SYSTEM_ADMIN_PASSWORD }}
       E2E_TEACHER_EMAIL: ${{ secrets.E2E_TEACHER_EMAIL }}
@@ -72,8 +74,6 @@ jobs:
       E2E_PARENT_PASSWORD: ${{ secrets.E2E_PARENT_PASSWORD }}
       E2E_STUDENT_EMAIL: ${{ secrets.E2E_STUDENT_EMAIL }}
       E2E_STUDENT_PASSWORD: ${{ secrets.E2E_STUDENT_PASSWORD }}
-      E2E_SCHOOL_B_EMAIL: ${{ secrets.E2E_SCHOOL_B_EMAIL }}
-      E2E_SCHOOL_B_PASSWORD: ${{ secrets.E2E_SCHOOL_B_PASSWORD }}
       PORT: 5000
       CI: true
     steps:
@@ -93,6 +93,18 @@ jobs:
           missing=()
           [[ -n "$E2E_DATABASE_URL" ]] || missing+=(E2E_DATABASE_URL)
           [[ -n "$E2E_JWT_SECRET" ]] || missing+=(E2E_JWT_SECRET)
+          [[ -n "$E2E_ADMIN_EMAIL" ]] || missing+=(E2E_ADMIN_EMAIL)
+          [[ -n "$E2E_ADMIN_PASSWORD" ]] || missing+=(E2E_ADMIN_PASSWORD)
+          [[ -n "$E2E_SCHOOL_B_EMAIL" ]] || missing+=(E2E_SCHOOL_B_EMAIL)
+          [[ -n "$E2E_SCHOOL_B_PASSWORD" ]] || missing+=(E2E_SCHOOL_B_PASSWORD)
+          [[ -n "$E2E_SYSTEM_ADMIN_EMAIL" ]] || missing+=(E2E_SYSTEM_ADMIN_EMAIL)
+          [[ -n "$E2E_SYSTEM_ADMIN_PASSWORD" ]] || missing+=(E2E_SYSTEM_ADMIN_PASSWORD)
+          [[ -n "$E2E_TEACHER_EMAIL" ]] || missing+=(E2E_TEACHER_EMAIL)
+          [[ -n "$E2E_TEACHER_PASSWORD" ]] || missing+=(E2E_TEACHER_PASSWORD)
+          [[ -n "$E2E_PARENT_EMAIL" ]] || missing+=(E2E_PARENT_EMAIL)
+          [[ -n "$E2E_PARENT_PASSWORD" ]] || missing+=(E2E_PARENT_PASSWORD)
+          [[ -n "$E2E_STUDENT_EMAIL" ]] || missing+=(E2E_STUDENT_EMAIL)
+          [[ -n "$E2E_STUDENT_PASSWORD" ]] || missing+=(E2E_STUDENT_PASSWORD)
           if (( ${#missing[@]} )); then
             printf 'Missing required GitHub Actions secret(s): %s\n' "${missing[*]}" >&2
             exit 1
@@ -104,11 +116,14 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Provision and verify isolated E2E accounts
+        run: npm run setup:e2e:rbac
+
       - name: Install Playwright Chromium and system dependencies
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests
-        run: npm run test:e2e
+        run: npm run test:e2e -- --workers=1
 
       - name: Upload Playwright HTML report
         if: always()
